@@ -39,7 +39,10 @@ class OutputChunk(ABC):
         canvas: Canvas,
         hard_wrap: bool,
         winnr: int | None = None,
+        row_offset: int = 0,
     ) -> Tuple[str, int]:
+        """Returns the text for this chunk and the number of extra rows it needs.
+        row_offset is the number of rows already in the output block when this chunk starts."""
         pass
 
 
@@ -73,6 +76,7 @@ class TextOutputChunk(OutputChunk):
         _canvas: Canvas,
         hard_wrap: bool,
         winnr: int | None = None,
+        row_offset: int = 0,
     ) -> Tuple[str, int]:
         text = clean_up_text(self.text)
         extra_lines = 0
@@ -144,6 +148,8 @@ class ImageOutputChunk(OutputChunk):
         self.img_path = img_path
         self.output_type = "display_data"
         self.img_identifier = None
+        self.height = 0
+        """rows covered by the image when placed in virtual text"""
 
     def place(
         self,
@@ -155,19 +161,25 @@ class ImageOutputChunk(OutputChunk):
         canvas: Canvas,
         virtual: bool,
         winnr: int | None = None,
+        row_offset: int = 0,
     ) -> Tuple[str, int]:
         loc = options.image_location
         if not (loc == "both" or (loc == "virt" and virtual) or (loc == "float" and not virtual)):
             return "", 0
 
-        self.img_identifier = canvas.add_image(
-            self.img_path,
-            f"{'virt-' if virtual else ''}{self.img_path}",
-            0,
-            lineno,
-            bufnr,
-            winnr,
-        )
+        if virtual:
+            # Virtual output is a single block of virt_lines anchored at `lineno`.
+            # image.nvim draws the image starting at the first row below the anchor
+            # plus `row_offset`, so the offset skips the header and text above the
+            # image, and the rows it covers are reserved in this block rather than
+            # in a second padding extmark that would land after the text.
+            self.img_identifier = canvas.add_image(
+                self.img_path, f"virt-{self.img_path}", 0, lineno, bufnr, winnr, row_offset
+            )
+            self.height = canvas.img_size(self.img_identifier, winnr)["height"]
+            return " \n" * self.height, 0
+
+        self.img_identifier = canvas.add_image(self.img_path, self.img_path, 0, lineno, bufnr, winnr)
         # images are rendered into virtual lines following the current line,
         # which also needs to exist as the extmark is placed there
         return " \n", canvas.img_size(self.img_identifier)["height"]

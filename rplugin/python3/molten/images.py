@@ -36,9 +36,10 @@ class Canvas(ABC):
         """
 
     @abstractmethod
-    def img_size(self, identifier: str) -> Dict[str, int]:
+    def img_size(self, identifier: str, winnr: int | None = None) -> Dict[str, int]:
         """
-        Get the height of an image in terminal rows.
+        Get the size of an image in terminal cells, as it will be rendered in
+        `winnr` when given.
         """
 
     @abstractmethod
@@ -50,6 +51,7 @@ class Canvas(ABC):
         y: int,
         bufnr: int,
         winnr: int | None = None,
+        row_offset: int | None = None,
     ) -> str:
         """
         Add an image to the canvas.
@@ -66,6 +68,10 @@ class Canvas(ABC):
           corner).
         - bufnr: int
           The buffer number for the buffer in which to draw the image.
+        - row_offset: int | None
+          When set, the image is part of a virtual text block at row y and is
+          drawn `row_offset` rows below the first row of that block. The caller
+          reserves the rows the image covers.
 
         Returns:
         str the identifier for the image
@@ -96,7 +102,7 @@ class NoCanvas(Canvas):
     def present(self) -> None:
         pass
 
-    def img_size(self, _indentifier: str) -> Dict[str, int]:
+    def img_size(self, _indentifier: str, _winnr: int | None = None) -> Dict[str, int]:
         return {"height": 0, "width": 0}
 
     def add_image(
@@ -106,7 +112,8 @@ class NoCanvas(Canvas):
         _x: int,
         _y: int,
         _bufnr: int,
-        _winnr: int,
+        _winnr: int | None = None,
+        _row_offset: int | None = None,
     ) -> None:
         pass
 
@@ -153,8 +160,8 @@ class ImageNvimCanvas(Canvas):
         self.to_make_invisible.clear()
         self.to_make_visible.clear()
 
-    def img_size(self, identifier: str) -> Dict[str, int]:
-        return self.image_api.image_size(identifier)
+    def img_size(self, identifier: str, winnr: int | None = None) -> Dict[str, int]:
+        return self.image_api.image_size(identifier, winnr)
 
     def add_image(
         self,
@@ -164,18 +171,23 @@ class ImageNvimCanvas(Canvas):
         y: int,
         bufnr: int,
         winnr: int | None = None,
+        row_offset: int | None = None,
     ) -> str:
-        img = self.image_api.from_file(
-            path,
-            {
-                "id": identifier,
-                "buffer": bufnr,
-                "with_virtual_padding": True,
-                "x": x,
-                "y": y,
-                "window": winnr,
-            },
-        )
+        opts = {
+            "id": identifier,
+            "buffer": bufnr,
+            "x": x,
+            "y": y,
+            "window": winnr,
+        }
+        if row_offset is None:
+            opts["with_virtual_padding"] = True
+        else:
+            # inline keeps the image anchored to an extmark so it follows buffer
+            # edits, without image.nvim adding padding rows of its own
+            opts["inline"] = True
+            opts["render_offset_top"] = row_offset
+        img = self.image_api.from_file(path, opts)
         self.to_make_visible.add(img)
         return img
 
@@ -229,7 +241,7 @@ class WeztermCanvas(Canvas):
         self.to_make_invisible.clear()
         self.to_make_visible.clear()
 
-    def img_size(self, _indentifier: str) -> Dict[str, int]:
+    def img_size(self, _indentifier: str, _winnr: int | None = None) -> Dict[str, int]:
         return {"height": 0, "width": 0}
 
     def add_image(
@@ -239,7 +251,8 @@ class WeztermCanvas(Canvas):
         _x: int,
         _y: int,
         _bufnr: int,
-        _winnr: int,
+        _winnr: int | None = None,
+        _row_offset: int | None = None,
     ) -> str | dict[str, str]:
         """Adds an image to the queue to be rendered by Wezterm via the place method"""
         img = {"path": path, "id": identifier}

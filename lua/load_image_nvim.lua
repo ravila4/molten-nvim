@@ -55,9 +55,9 @@ image_api.move = function(identifier, x, y)
   images[identifier]:move(x, y)
 end
 
----returns the max height this image can be displayed at considering the image size and user's max
----width/height settings. Does not consider max width/height percent values.
-image_api.image_size = function(identifier)
+---returns the size this image will be displayed at, considering the image size, the user's max
+---width/height settings and, when a window is given, the max width/height window percentages.
+image_api.image_size = function(identifier, winnr)
   local img = images[identifier]
   local term_size = require("image.utils.term").get_size()
   local gopts = img.global_state.options
@@ -65,6 +65,17 @@ image_api.image_size = function(identifier)
     width = math.min(img.image_width / term_size.cell_width, gopts.max_width or math.huge),
     height = math.min(img.image_height / term_size.cell_height, gopts.max_height or math.huge),
   }
+  if winnr and winnr ~= vim.NIL and vim.api.nvim_win_is_valid(winnr) then
+    local info = vim.fn.getwininfo(winnr)[1]
+    local pct_w = img.max_width_window_percentage or gopts.max_width_window_percentage
+    local pct_h = img.max_height_window_percentage or gopts.max_height_window_percentage
+    if type(pct_w) == "number" then
+      true_size.width = math.min(true_size.width, math.floor(info.width * pct_w / 100))
+    end
+    if type(pct_h) == "number" then
+      true_size.height = math.min(true_size.height, math.floor(info.height * pct_h / 100))
+    end
+  end
   local width, height = utils.math.adjust_to_aspect_ratio(
     term_size,
     img.image_width,
