@@ -219,6 +219,12 @@ class Output:
 
         self._should_clear = False
 
+    def text(self) -> str:
+        """The text chunks of this output, without terminal escape codes."""
+        return "".join(
+            clean_up_text(chunk.text) for chunk in self.chunks if isinstance(chunk, TextOutputChunk)
+        )
+
     def merge_text_chunks(self):
         """Merge the last two chunks if they are text chunks, and text on a line before \r
         character, this is b/c outputs before a \r aren't shown, and so, should be deleted"""

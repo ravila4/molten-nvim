@@ -368,6 +368,17 @@ class Molten:
             return [x.kernel_id for x in self.buffers[buf]]
         return list(self.molten_kernels.keys())
 
+    @pynvim.function("MoltenOutputText", sync=True)  # type: ignore
+    def function_output_text(self, args: List[int]) -> str:
+        """Text of the output shown by the virtual-text extmark [bufnr, extmark_id],
+        or an empty string when there is no such output or it has no text."""
+        bufnr, extmark_id = args
+        for kernel in self.buffers.get(bufnr, []):
+            for output in kernel.outputs.values():
+                if output.virt_text_id == extmark_id:
+                    return output.output.text()
+        return ""
+
     @pynvim.function("MoltenStatusLineKernels", sync=True)  # type: ignore
     def function_status_line_kernels(self, args) -> str:
         kernels = self.function_list_running_kernels(args)
