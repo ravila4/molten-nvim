@@ -393,9 +393,12 @@ class OutputBuffer:
                 # the entire window size is shown, but the buffer still has more lines to render
                 hidden_lines = len(self.display_buf) - height
                 if self.options.output_win_cover_gutter and type(border) == list:
-                    border_pad = border[5 % len(border)][0] * text_off
+                    # border entries are either "char" or ["char", "highlight"]
+                    bottom = border[5 % len(border)]
+                    if type(bottom) == str:
+                        bottom = [bottom, ""]
                     win_opts["footer"] = [
-                        (border_pad, border[5 % len(border)][1]),
+                        (bottom[0] * text_off, bottom[1]),
                         (f" 󰁅 {hidden_lines} More Lines ", self.options.hl.foot),
                     ]
                 else:
