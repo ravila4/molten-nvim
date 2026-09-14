@@ -86,7 +86,7 @@ class MoltenKernel:
     def deinit(self) -> None:
         self._doautocmd("MoltenDeinitPre")
         self.runtime.deinit()
-        self._doautocmd("MoltenDeinitPost")
+        self._doautocmd("MoltenDeinitPost", {"data": {"kernel_id": self.kernel_id}})
 
     def interrupt(self) -> None:
         self.runtime.interrupt()
@@ -113,6 +113,7 @@ class MoltenKernel:
         self.outputs[span] = OutputBuffer(
             self.nvim, self.canvas, self.extmark_namespace, self.options
         )
+        self.outputs[span].output.source = code
         self.queued_outputs.put(span)
 
         self.selected_cell = span
@@ -345,6 +346,9 @@ class MoltenKernel:
 
     def update_interface(self) -> None:
         buffer_numbers = [buf.number for buf in self.buffers]
+        self._doautocmd("MoltenCellUpdate", {
+            "data": {"buffers": buffer_numbers, "kernel_id": self.kernel_id},
+        })
         if self.nvim.current.buffer.number not in buffer_numbers:
             return
 

@@ -75,6 +75,7 @@ def load(nvim: Nvim, moltenbuffer: MoltenKernel, nvim_buffer: Buffer, data: Dict
         #      what happens when the counts start to overlap?
         MoltenIOError.assert_has_key(cell, "execution_count", int)
         output = Output(cell["execution_count"])
+        output.source = MoltenIOError.assert_has_key(cell, "source", str)
 
         MoltenIOError.assert_has_key(cell, "status", int)
         output.status = OutputStatus(cell["status"])
@@ -127,6 +128,7 @@ def save(molten_kernel: MoltenKernel, nvim_buffer: int) -> Dict[str, Any]:
                     },
                 },
                 "execution_count": output.output.execution_count,
+                "source": output.output.source,
                 "status": output.output.status.value,
                 "success": output.output.success,
                 "chunks": [

@@ -59,6 +59,7 @@ def import_outputs(nvim: Nvim, kernel: MoltenKernel, filepath: str):
             if nb_line >= len(nb_contents) - 1:
                 # we're done. This is a match, we'll create the output
                 output = Output(cell["execution_count"])
+                output.source = cell["source"]
                 output.old = True
                 output.success = True
                 if output.execution_count:

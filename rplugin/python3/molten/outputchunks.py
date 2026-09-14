@@ -209,6 +209,7 @@ class Output:
 
     def __init__(self, execution_count: Optional[int]):
         self.execution_count = execution_count
+        self.source: str = ""
         self.status = OutputStatus.HOLD
         self.chunks = []
         self.success = True

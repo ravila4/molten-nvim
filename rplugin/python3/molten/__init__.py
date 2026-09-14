@@ -6,6 +6,7 @@ from itertools import chain
 import pynvim
 from pynvim.api import Buffer
 from molten.code_cell import CodeCell
+from molten.cell_snapshot import CellSnapshots, SnapshotEntry
 from molten.images import Canvas, get_canvas_given_provider, WeztermCanvas
 from molten.info_window import create_info_window
 from molten.ipynb import export_outputs, get_default_import_export_file, import_outputs
@@ -13,6 +14,7 @@ from molten.save_load import MoltenIOError, get_default_save_file, load, save
 from molten.moltenbuffer import MoltenKernel
 from molten.options import MoltenOptions
 from molten.outputbuffer import OutputBuffer
+from molten.outputchunks import OutputStatus
 from molten.position import DynamicPosition, Position
 from molten.runtime import get_available_kernels
 from molten.utils import MoltenException, notify_error, notify_info, notify_warn, nvimui
@@ -56,6 +58,7 @@ class Molten:
         self.timer = None
         self.input_timer = None
         self.molten_kernels = {}
+        self.cell_snapshots = CellSnapshots(nvim)
 
     def _initialize(self) -> None:
         assert not self.initialized
@@ -256,6 +259,7 @@ class Molten:
         # Have to copy this to get around reference issues
         for kernel in [x for x in molten_kernels]:
             kernel.deinit()
+            self.cell_snapshots.discard_kernel(kernel)
             for buf in kernel.buffers:
                 self.buffers[buf.number].remove(kernel)
                 if len(self.buffers[buf.number]) == 0:
@@ -882,11 +886,7 @@ class Molten:
     def function_molten_tick(self, _: Any) -> None:
         self._initialize_if_necessary()
 
-        molten_kernels = self._get_current_buf_kernels(False)
-        if molten_kernels is None:
-            return
-
-        for m in molten_kernels:
+        for m in self.molten_kernels.values():
             m.tick()
 
     @pynvim.function("MoltenTickInput", sync=False)  # type: ignore
@@ -894,11 +894,7 @@ class Molten:
     def function_molten_tick_input(self, _: Any) -> None:
         self._initialize_if_necessary()
 
-        molten_kernels = self._get_current_buf_kernels(False)
-        if molten_kernels is None:
-            return
-
-        for m in molten_kernels:
+        for m in self.molten_kernels.values():
             m.tick_input()
 
     @pynvim.function("MoltenSendStdin", sync=False)  # type: ignore
@@ -957,6 +953,49 @@ class Molten:
             self.nvim.current.buffer,
         )
 
+    @pynvim.function("MoltenCellInfo", sync=True)
+    def function_cell_info(self, args: list[int]) -> list[dict[str, Any]]:
+        """Return cell spans and execution snapshots for one buffer.
+
+        Lines and columns are zero-based; end lines are inclusive and end
+        columns are exclusive. Source is the execution/import snapshot.
+        """
+        bufnr = args[0] if args else self.nvim.current.buffer.number
+        cells = []
+        for kernel in self.buffers.get(bufnr, []):
+            for span, output_buffer in kernel.outputs.items():
+                if span.bufno != bufnr:
+                    continue
+                output = output_buffer.output
+                status = {
+                    OutputStatus.HOLD: "queued",
+                    OutputStatus.RUNNING: "running",
+                    OutputStatus.DONE: "done" if output.success else "error",
+                    OutputStatus.NEW: "not run",
+                }[output.status]
+                cells.append({
+                    "start_line": span.begin.lineno,
+                    "end_line": span.end.lineno,
+                    "start_col": span.begin.colno,
+                    "end_col": span.end.colno,
+                    "status": status,
+                    "execution_count": output.execution_count or 0,
+                    "old": output.old,
+                    "source": output.source,
+                    "kernel_id": kernel.kernel_id,
+                })
+        return cells
+
+    @pynvim.function("MoltenCellSnapshot", sync=True)
+    def function_cell_snapshot(self, args: list[int]) -> list[SnapshotEntry]:
+        bufnr = args[0]
+        return self.cell_snapshots.snapshot(bufnr, self.buffers.get(bufnr, []))
+
+    @pynvim.function("MoltenCellRestore", sync=True)
+    def function_cell_restore(self, args: list[Any]) -> bool:
+        bufnr, entries = args
+        return self.cell_snapshots.restore(bufnr, self.buffers.get(bufnr, []), entries)
+
     @pynvim.function("MoltenDefineCell", sync=True)
     def function_molten_define_cell(self, args: List[int]) -> None:
         if not args:
@@ -992,4 +1031,6 @@ class Molten:
                 molten.outputs[span] = OutputBuffer(
                     self.nvim, self.canvas, molten.extmark_namespace, self.options
                 )
+                molten.outputs[span].output.source = span.get_text(self.nvim)
+                molten.outputs[span].output.status = OutputStatus.NEW
                 break

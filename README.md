@@ -273,6 +273,7 @@ We provide some `User` autocommands (see `:help User`) for further customization
 - `MoltenDeinitPre`: runs right before `MoltenDeinit` de-initialization happens for a buffer
 - `MoltenDeinitPost`: runs right after `MoltenDeinit` de-initialization happens for a buffer
 - `MoltenKernelReady`: runs when a kernel is ready for the first time. `data` field has the `kernel_id`
+- `MoltenCellUpdate`: cell state or interface changed. `data` contains `buffers` (buffer numbers) and `kernel_id`. Consumers should compare snapshots before redrawing.
 
 <details>
   <summary>Lua Usage</summary>
@@ -380,6 +381,28 @@ returns only kernels running in the current buffer. Otherwise, returns all runni
 vim.fn.MoltenRunningKernels(true) -- list buf local kernel ids
 vim.fn.MoltenRunningKernels(false) -- list all kernel ids
 ```
+
+</details>
+
+<details>
+  <summary>MoltenCellInfo</summary>
+
+`vim.fn.MoltenCellInfo(bufnr)` returns execution snapshots for cells in that buffer, including shared kernels. Each entry contains `start_line`, `end_line`, `start_col`, `end_col`, `status`, `execution_count`, `old`, `source`, and `kernel_id`. Coordinates are zero-based; end lines are inclusive and end columns exclusive. An unknown execution count is returned as zero.
+
+Status is `not run`, `queued`, `running`, `done`, or `error`. `source` is the text submitted for execution or imported with the output, allowing consumers to detect edits. `old` identifies imported or loaded results. Kernel messages continue to be processed when another buffer has focus.
+
+`MoltenSave` stores the source snapshot alongside each cell. Loading a sidecar requires this field; older sidecars must be recreated. Notebook imports are unaffected.
+
+</details>
+
+<details>
+  <summary>MoltenCellSnapshot / MoltenCellRestore</summary>
+
+`vim.fn.MoltenCellSnapshot(bufnr)` captures the buffer's attached output cells as a list of `{id, kernel_id, start_line, end_line, start_col, end_col}` records. Coordinates follow `MoltenCellInfo`. IDs retain the original output and cell objects until their kernel is deinitialized. `MoltenDeinitPost` includes `data.kernel_id` so consumers can discard that kernel's saved snapshots.
+
+After changing notebook text, pass the full desired list to `vim.fn.MoltenCellRestore(bufnr, cells)`. Adjust coordinates to move outputs, omit records to detach them, or include records from an earlier snapshot to reattach them during paste or undo. The function returns true. Detached outputs remain available through their IDs; other buffers are unaffected.
+
+Restore validates IDs, ranges, and overlaps before changing output attachments. It rejects detaching queued or running cells. Callers must check execution state before changing the text, since restore does not undo buffer edits on failure. Snapshot IDs are local to the current plugin session and cannot be saved across restarts.
 
 </details>
 
