@@ -15,7 +15,20 @@ image_api.from_file = function(path, opts)
   if opts.window and opts.window == vim.NIL then
     opts.window = nil
   end
-  images[path] = image.from_file(path, opts or {})
+  opts = opts or {}
+  local img = image.from_file(path, opts)
+  -- image.nvim returns the existing image for a known id, so apply the
+  -- placement that may have changed since it was first placed
+  if opts.window then
+    img.window = opts.window
+  end
+  if opts.render_offset_top then
+    img.render_offset_top = opts.render_offset_top
+  end
+  if opts.y then
+    img.geometry.y = opts.y
+  end
+  images[path] = img
   return path
 end
 
@@ -53,6 +66,15 @@ end
 
 image_api.move = function(identifier, x, y)
   images[identifier]:move(x, y)
+end
+
+---returns the window the image is placed in, or nil once that window is gone
+image_api.image_window = function(identifier)
+  local win = images[identifier].window
+  if win and vim.api.nvim_win_is_valid(win) then
+    return win
+  end
+  return nil
 end
 
 ---returns the size this image will be displayed at, considering the image size, the user's max

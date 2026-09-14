@@ -42,6 +42,13 @@ class Canvas(ABC):
         `winnr` when given.
         """
 
+    def img_window_lost(self, _identifier: str) -> bool:
+        """
+        Whether the window an image was placed in is gone. Canvases that don't
+        tie images to a window never lose them.
+        """
+        return False
+
     @abstractmethod
     def add_image(
         self,
@@ -162,6 +169,9 @@ class ImageNvimCanvas(Canvas):
 
     def img_size(self, identifier: str, winnr: int | None = None) -> Dict[str, int]:
         return self.image_api.image_size(identifier, winnr)
+
+    def img_window_lost(self, identifier: str) -> bool:
+        return self.image_api.image_window(identifier) is None
 
     def add_image(
         self,

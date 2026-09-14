@@ -210,8 +210,25 @@ class OutputBuffer:
         lines.insert(0, self._get_header_text(self.output))
         return lines, len(lines) - 1 + virtual_lines, images
 
+    def virtual_images_stale(self, winnr: int) -> bool:
+        """Whether an image of this output lost the window it was placed in, or
+        would now render on a different number of rows than were reserved for
+        it after a window or font resize."""
+        for chunk in self.output.chunks:
+            if isinstance(chunk, ImageOutputChunk) and chunk.img_identifier is not None:
+                if self.canvas.img_window_lost(chunk.img_identifier):
+                    return True
+                if self.canvas.img_size(chunk.img_identifier, winnr)["height"] != chunk.height:
+                    return True
+        return False
+
     def show_virtual_output(self, anchor: Position) -> None:
-        if self.displayed_status == OutputStatus.DONE and self.virt_text_id is not None:
+        win = self.nvim.current.window
+        if (
+            self.displayed_status == OutputStatus.DONE
+            and self.virt_text_id is not None
+            and not self.virtual_images_stale(win.handle)
+        ):
             return
         offset = self.calculate_offset(anchor) if self.options.cover_empty_lines else 0
         self.displayed_status = self.output.status
@@ -225,7 +242,6 @@ class OutputBuffer:
             )
             self.virt_text_id = None
 
-        win = self.nvim.current.window
         win_info = self.nvim.funcs.getwininfo(win.handle)[0]
         win_col = win_info["wincol"]
         win_row = anchor.lineno + offset

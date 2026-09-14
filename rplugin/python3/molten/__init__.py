@@ -91,6 +91,7 @@ class Molten:
         self.nvim.command("autocmd CursorMovedI * call MoltenOnCursorMoved()")
         self.nvim.command("autocmd WinScrolled  * call MoltenOnWinScrolled()")
         self.nvim.command("autocmd BufEnter     * call MoltenUpdateInterface()")
+        self.nvim.command("autocmd WinResized  * call MoltenUpdateInterface()")
         self.nvim.command("autocmd BufLeave     * call MoltenBufLeave()")
         self.nvim.command("autocmd BufUnload    * call MoltenOnBufferUnload()")
         self.nvim.command("autocmd ExitPre      * call MoltenOnExitPre()")
