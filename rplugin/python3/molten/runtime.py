@@ -5,6 +5,8 @@ from queue import Empty as EmptyQueueException
 import os
 import tempfile
 import json
+import time
+from threading import Thread
 
 import jupyter_client
 from pynvim import Nvim
@@ -82,25 +84,96 @@ class JupyterRuntime:
 
         self.allocated_files = []
         self.options = options
+        self._shutdown_started = False
+        self._begin_startup()
+
+    def _begin_startup(self) -> None:
+        self.state = RuntimeState.STARTING
+        self._startup_deadline = time.monotonic() + 30
+        self._kernel_info = None
+        self._iopub_connected = False
+        self._next_info_request = 0
 
     def is_ready(self) -> bool:
-        return self.state.value > RuntimeState.STARTING.value
+        return self.state in (RuntimeState.IDLE, RuntimeState.RUNNING)
+
+    def _shutdown(self) -> None:
+        if isinstance(self.kernel_client, JupyterAPIClient):
+            if not self.external_kernel:
+                self.kernel_client.shutdown()
+        else:
+            self.kernel_client.stop_channels()
+            if not self.external_kernel:
+                self.kernel_manager.shutdown_kernel(now=True)
+                self.kernel_client.cleanup_connection_file()
+
+    def _stop_kernel(self) -> None:
+        if not self._shutdown_started:
+            self._shutdown_started = True
+            Thread(target=self._shutdown, daemon=True).start()
+
+    def _fail_startup(self, reason: str) -> None:
+        self.state = RuntimeState.FAILED
+        self._stop_kernel()
+        self.nvim.exec_lua(
+            "local message = ...; vim.schedule(function() vim.notify(message, vim.log.levels.ERROR) end)",
+            f"[Molten] Kernel '{self.kernel_name}' failed to start: {reason}",
+        )
+        self.nvim.api.exec_autocmds("User", {
+            "pattern": "MoltenKernelFailed",
+            "data": {"kernel_id": self.kernel_id, "kernel_name": self.kernel_name,
+                     "error": reason},
+        })
+
+    def _poll_startup(self) -> bool:
+        now = time.monotonic()
+        remote = isinstance(self.kernel_client, JupyterAPIClient)
+        if not remote and not self.external_kernel and not self.kernel_manager.is_alive():
+            self._fail_startup("kernel process exited")
+            return False
+        if now >= self._startup_deadline:
+            self._fail_startup("no readiness reply within 30 seconds")
+            return False
+        if now >= self._next_info_request:
+            self.kernel_client.kernel_info()
+            self._next_info_request = now + 1
+        if not remote:
+            try:
+                message = self.kernel_client.get_shell_msg(timeout=0)
+                if message["msg_type"] == "kernel_info_reply":
+                    self._kernel_info = message
+            except EmptyQueueException:
+                pass
+        while True:
+            try:
+                message = self.kernel_client.get_iopub_msg(timeout=0)
+            except EmptyQueueException:
+                break
+            if remote and message["msg_type"] == "kernel_info_reply":
+                self._kernel_info = message
+            elif (message["msg_type"] == "status"
+                  and message.get("content", {}).get("execution_state") == "idle"):
+                self._iopub_connected = True
+        if self._kernel_info is None or not self._iopub_connected:
+            return False
+        if not remote:
+            self.kernel_client._handle_kernel_info_reply(self._kernel_info)
+        self.state = RuntimeState.IDLE
+        return True
 
     def deinit(self) -> None:
         for path in self.allocated_files:
             if os.path.exists(path):
                 os.remove(path)
 
-        if self.external_kernel is False:
-            self.kernel_client.cleanup_connection_file()
-            self.kernel_client.shutdown()
+        self._stop_kernel()
 
     def interrupt(self) -> None:
         self.kernel_manager.interrupt_kernel()
 
     def restart(self) -> None:
-        self.state = RuntimeState.STARTING
         self.kernel_manager.restart_kernel()
+        self._begin_startup()
 
     def run_code(self, code: str) -> None:
         self.kernel_client.execute(code)
@@ -204,6 +277,9 @@ class JupyterRuntime:
     def tick(self, output: Optional[Output]) -> bool:
         did_stuff = False
 
+        if self.state == RuntimeState.FAILED:
+            return False
+
         assert isinstance(
             self.kernel_client,
             (
@@ -213,11 +289,8 @@ class JupyterRuntime:
         )
 
         if not self.is_ready():
-            try:
-                self.kernel_client.wait_for_ready(timeout=0)
-                self.state = RuntimeState.IDLE
-                did_stuff = True
-            except RuntimeError:
+            did_stuff = self._poll_startup()
+            if not did_stuff:
                 return False
 
         if output is None:
@@ -242,7 +315,7 @@ class JupyterRuntime:
 
     def tick_input(self):
         """Tick to check input_requests"""
-        if not self.is_ready:
+        if not self.is_ready():
             return
 
         assert isinstance(

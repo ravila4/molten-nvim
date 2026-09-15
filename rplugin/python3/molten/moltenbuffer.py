@@ -11,10 +11,11 @@ from molten.code_cell import CodeCell
 from molten.options import MoltenOptions
 from molten.images import Canvas
 from molten.position import Position
-from molten.utils import notify_error, notify_info, notify_warn
+from molten.utils import MoltenException, notify_error, notify_info, notify_warn
 from molten.outputbuffer import OutputBuffer
 from molten.outputchunks import ImageOutputChunk, OutputChunk, OutputStatus
 from molten.runtime import JupyterRuntime
+from molten.runtime_state import RuntimeState
 
 
 class MoltenKernel:
@@ -103,9 +104,14 @@ class MoltenKernel:
                     output.output.status = OutputStatus.DONE
                     output.output.success = False
 
-        self.runtime.restart()
+        if self.runtime.state == RuntimeState.FAILED:
+            self.switch_kernel(self.runtime.kernel_name)
+        else:
+            self.runtime.restart()
 
     def run_code(self, code: str, span: CodeCell) -> None:
+        if not self.runtime.is_ready():
+            raise MoltenException("Kernel is not ready. Wait for startup or select another kernel.")
         if not self.try_delete_overlapping_cells(span):
             return
         self.runtime.run_code(code)
@@ -215,6 +221,19 @@ class MoltenKernel:
         if is_idle and not self.queued_outputs.empty():
             key = self.queued_outputs.get_nowait()
             self.current_output = key
+
+    def switch_kernel(self, kernel_name: str) -> None:
+        if not self.queued_outputs.empty() or any(
+            item.output.status in (OutputStatus.HOLD, OutputStatus.RUNNING)
+            for item in self.outputs.values()
+        ):
+            raise MoltenException("Cannot switch kernels with running or queued execution.")
+        runtime = JupyterRuntime(self.nvim, kernel_name, self.kernel_id, self.options)
+        previous = self.runtime
+        runtime.allocated_files = previous.allocated_files
+        previous.allocated_files = []
+        self.runtime = runtime
+        previous.deinit()
 
     def tick(self) -> None:
         self._check_if_done_running()

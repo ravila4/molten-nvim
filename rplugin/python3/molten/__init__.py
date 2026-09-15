@@ -304,6 +304,19 @@ class Molten:
 
         self._deinit_buffer(kernels)
 
+    @pynvim.function("MoltenKernelName", sync=True)  # type: ignore
+    def function_kernel_name(self, _: Any) -> str:
+        kernels = self.buffers.get(self.nvim.current.buffer.number, [])
+        return kernels[0].runtime.kernel_name if len(kernels) == 1 else ""
+
+    @pynvim.command("MoltenSwitchKernel", nargs=1, sync=True)  # type: ignore
+    @nvimui  # type: ignore
+    def command_switch_kernel(self, args: List[str]) -> None:
+        kernels = self._get_current_buf_kernels(True)
+        if kernels is None or len(kernels) != 1:
+            raise MoltenException("Switching requires exactly one kernel attached to this buffer.")
+        kernels[0].switch_kernel(args[0])
+
     @pynvim.command("MoltenInfo", nargs=0, sync=True)  # type: ignore
     @nvimui  # type: ignore
     def command_info(self) -> None:
@@ -386,7 +399,7 @@ class Molten:
     @pynvim.function("MoltenStatusLineKernels", sync=True)  # type: ignore
     def function_status_line_kernels(self, args) -> str:
         kernels = self.function_list_running_kernels(args)
-        return " ".join(kernels)
+        return " ".join(self.molten_kernels[kernel].runtime.kernel_name for kernel in kernels)
 
     @pynvim.function("MoltenStatusLineInit", sync=True)  # type: ignore
     def function_status_line_init(self, _) -> str:

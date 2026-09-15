@@ -186,7 +186,7 @@ def test_run_captures_executed_source(monkeypatch):
     kernel.outputs = {}
     kernel.queued_outputs = Queue()
     kernel.current_output = None
-    kernel.runtime = SimpleNamespace(run_code=lambda code: None)
+    kernel.runtime = SimpleNamespace(run_code=lambda code: None, is_ready=lambda: True)
     monkeypatch.setattr(kernel, "update_interface", lambda: None)
     cell = CodeCell(None, Position(7, 0, 0), Position(7, 0, 8))
     kernel.run_code("print(1)", cell)

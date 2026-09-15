@@ -89,6 +89,13 @@ class JupyterAPIClient:
         })
         self._socket.send(message)
 
+    def kernel_info(self) -> None:
+        self._socket.send(json.dumps({
+            "header": {"msg_type": "kernel_info_request", "msg_id": uuid.uuid4().hex,
+                       "session": uuid.uuid4().hex},
+            "parent_header": {}, "metadata": {}, "content": {}, "channel": "shell",
+        }))
+
     def shutdown(self):
         self.requests.delete(self._kernel_api_base,
                         headers=self._headers)
