@@ -14,7 +14,7 @@ from molten.save_load import MoltenIOError, get_default_save_file, load, save
 from molten.moltenbuffer import MoltenKernel
 from molten.options import MoltenOptions
 from molten.outputbuffer import OutputBuffer
-from molten.outputchunks import OutputStatus
+from molten.outputchunks import ImageOutputChunk, OutputStatus
 from molten.position import DynamicPosition, Position
 from molten.runtime import get_available_kernels
 from molten.utils import MoltenException, notify_error, notify_info, notify_warn, nvimui
@@ -395,6 +395,20 @@ class Molten:
                 if output.virt_text_id == extmark_id:
                     return output.output.text()
         return ""
+
+    @pynvim.function("MoltenOutputImages", sync=True)  # type: ignore
+    def function_output_images(self, args: list[int]) -> list[str]:
+        """Image source paths for [bufnr, output extmark id], in output order."""
+        bufnr, extmark_id = args
+        for kernel in self.buffers.get(bufnr, []):
+            for output in kernel.outputs.values():
+                if output.virt_text_id == extmark_id:
+                    return [
+                        chunk.img_path
+                        for chunk in output.output.chunks
+                        if isinstance(chunk, ImageOutputChunk)
+                    ]
+        return []
 
     @pynvim.function("MoltenStatusLineKernels", sync=True)  # type: ignore
     def function_status_line_kernels(self, args) -> str:

@@ -207,6 +207,9 @@ class OutputBuffer:
         while len(lines) > 0 and lines[-1] == "":
             lines.pop()
 
+        if self.options.image_provider == "snacks.nvim" and images:
+            lines.append("")
+
         lines.insert(0, self._get_header_text(self.output))
         return lines, len(lines) - 1 + virtual_lines, images
 
@@ -282,7 +285,10 @@ class OutputBuffer:
         max_lines = self.options.virt_text_max_lines
         image_rows = set()
         for chunk, first in images:
-            image_rows.update(range(first, first + chunk.height))
+            if self.options.image_provider == "snacks.nvim":
+                image_rows.add(first)
+            else:
+                image_rows.update(range(first, first + chunk.height))
         text_rows = len(lines) - len(image_rows)
         if text_rows <= max_lines:
             return lines
