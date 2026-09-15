@@ -168,6 +168,13 @@ class ImageOutputChunk(OutputChunk):
             return "", 0
 
         if virtual:
+            if options.image_provider == "snacks.nvim":
+                self.img_identifier = canvas.add_image(
+                    self.img_path, f"virt-{self.img_path}", 0, lineno, bufnr, winnr
+                )
+                self.height = canvas.img_size(self.img_identifier, winnr)["height"]
+                return " \n", self.height
+
             # Virtual output is a single block of virt_lines anchored at `lineno`.
             # image.nvim draws the image starting at the first row below the anchor
             # plus `row_offset`, so the offset skips the header and text above the

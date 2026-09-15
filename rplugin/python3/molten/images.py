@@ -205,6 +205,61 @@ class ImageNvimCanvas(Canvas):
         self.to_make_invisible.add(identifier)
 
 
+class SnacksCanvas(Canvas):
+    def __init__(self, nvim: Nvim) -> None:
+        self.nvim = nvim
+        self.to_make_visible: set[str] = set()
+        self.to_make_invisible: set[str] = set()
+
+    def init(self) -> None:
+        self.nvim.exec_lua("_snacks = require('load_snacks_nvim').snacks_api")
+        self.snacks_api = self.nvim.lua._snacks
+
+    def deinit(self) -> None:
+        self.snacks_api.clear_all()
+
+    def present(self) -> None:
+        to_render = self.to_make_visible - self.to_make_invisible
+        self.to_make_invisible -= self.to_make_visible
+
+        for identifier in self.to_make_invisible:
+            self.snacks_api.clear(identifier)
+        for identifier in to_render:
+            self.snacks_api.render(identifier)
+
+        self.to_make_visible.clear()
+        self.to_make_invisible.clear()
+
+    def img_size(self, identifier: str, winnr: int | None = None) -> Dict[str, int]:
+        return self.snacks_api.image_size(identifier, winnr)
+
+    def add_image(
+        self,
+        path: str,
+        identifier: str,
+        x: int,
+        y: int,
+        bufnr: int,
+        winnr: int | None = None,
+        row_offset: int | None = None,
+    ) -> str:
+        del winnr, row_offset
+        image = self.snacks_api.from_file(
+            path,
+            {
+                "id": identifier,
+                "buffer": bufnr,
+                "x": x,
+                "y": y + 1,
+            },
+        )
+        self.to_make_visible.add(image)
+        return image
+
+    def remove_image(self, identifier: str) -> None:
+        self.to_make_invisible.add(identifier)
+
+
 class WeztermCanvas(Canvas):
     """A canvas for using Wezterm's imgcat functionality to render images/plots"""
 
@@ -291,6 +346,8 @@ def get_canvas_given_provider(
         return NoCanvas()
     elif name == "image.nvim":
         return ImageNvimCanvas(nvim)
+    elif name == "snacks.nvim":
+        return SnacksCanvas(nvim)
     elif name == "wezterm":
         if options.auto_open_output:
             raise MoltenException(
