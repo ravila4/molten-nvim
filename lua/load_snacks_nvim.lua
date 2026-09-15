@@ -132,7 +132,7 @@ snacks_api.render = function(identifier, output)
         identifier = identifier,
       }
     end
-    image.placement = Snacks.image.placement.new(image.buffer, image.path, image.opts)
+    image.placement = snacks.image.placement.new(image.buffer, image.path, image.opts)
   end
 end
 
@@ -157,6 +157,9 @@ end
 
 snacks_api.image_size = function(identifier)
   local image = images[identifier]
+  if not image then
+    return { width = 0, height = 0 }
+  end
   local bounds = {
     width = image.opts.max_width,
     height = image.opts.max_height,

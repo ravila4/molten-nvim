@@ -335,6 +335,9 @@ class OutputBuffer:
                 image_rows.add(first)
             else:
                 image_rows.update(range(first, first + chunk.height))
+        if self.options.image_provider == "snacks.nvim" and images and lines[-1] == "":
+            # build_output_text appends a placement anchor, not an output text row.
+            image_rows.add(len(lines) - 1)
         text_rows = len(lines) - len(image_rows)
         if text_rows <= max_lines:
             return lines

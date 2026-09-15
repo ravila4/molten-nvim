@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from molten.images import get_canvas_given_provider
 from molten.outputbuffer import OutputBuffer
-from molten.outputchunks import ImageOutputChunk, Output
+from molten.outputchunks import ImageOutputChunk, Output, TextOutputChunk
 
 
 class FakeSnacksApi:
@@ -231,3 +231,40 @@ def test_snacks_mixed_output_creates_text_and_image_blocks_in_chunk_order() -> N
         ("image", "second"),
         ("text", ["after"]),
     ]
+
+
+def test_snacks_padding_does_not_trigger_truncation() -> None:
+    output_buffer = make_mixed_output(11)
+    lines, _, images = output_buffer.build_output_text((0, 12, 80, 24), 4, True)
+
+    assert output_buffer.truncate_virt_lines(lines, images) == lines
+    assert lines[-2] == "line 11"
+
+
+def test_snacks_footer_counts_only_hidden_text() -> None:
+    output_buffer = make_mixed_output(12)
+    lines, _, images = output_buffer.build_output_text((0, 12, 80, 24), 4, True)
+
+    truncated = output_buffer.truncate_virt_lines(lines, images)
+
+    assert truncated == ["header", " ", *[f"line {i}" for i in range(1, 11)], "󰁅 2 More Lines "]
+
+
+def make_mixed_output(text_lines: int) -> OutputBuffer:
+    output_buffer = OutputBuffer.__new__(OutputBuffer)
+    output_buffer.nvim = SimpleNamespace(current=SimpleNamespace(window=SimpleNamespace(handle=9)))
+    output_buffer.canvas = FakeCanvas()
+    output_buffer.options = SimpleNamespace(
+        image_location="virt",
+        image_provider="snacks.nvim",
+        limit_output_chars=0,
+        virt_text_max_lines=12,
+        wrap_output=False,
+    )
+    output_buffer.output = Output(None)
+    output_buffer.output.chunks = [
+        ImageOutputChunk("plot.png"),
+        TextOutputChunk("\n".join(f"line {i}" for i in range(1, text_lines + 1))),
+    ]
+    output_buffer._get_header_text = lambda _output: "header"
+    return output_buffer

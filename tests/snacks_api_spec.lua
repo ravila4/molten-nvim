@@ -41,7 +41,6 @@ package.loaded.snacks = {
     },
   },
 }
-_G.Snacks = package.loaded.snacks
 
 local api = require("load_snacks_nvim").snacks_api
 local first = api.from_file("shared.png", { id = "first", buffer = 4, x = 2, y = 7 })
@@ -112,3 +111,8 @@ assert(#vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, {}) == 1, "updates must no
 vim.api.nvim_buf_del_extmark(buf, ns, eid)
 
 vim.api.nvim_buf_delete(buf, { force = true })
+
+assert(
+  vim.deep_equal(api.image_size("missing"), { width = 0, height = 0 }),
+  "an unknown image should report zero dimensions so Molten can replace it"
+)
