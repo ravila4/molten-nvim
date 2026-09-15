@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 from queue import Queue
 from types import SimpleNamespace
@@ -167,9 +168,25 @@ def test_info_maps_status_and_filters_shared_kernel(state, success, expected):
             "old": True,
             "source": "print(1)",
             "kernel_id": "python",
+            "started_at": None,
+            "finished_at": None,
         }
     ]
     assert plugin.function_cell_info([99]) == []
+
+
+def test_info_exposes_execution_timestamps():
+    plugin = Molten(SimpleNamespace(current=SimpleNamespace(buffer=SimpleNamespace(number=7))))
+    output = Output(1)
+    output.start_time = datetime(2026, 9, 15, 12, 0, 0, tzinfo=timezone.utc)
+    output.end_time = datetime(2026, 9, 15, 12, 0, 2, 800000, tzinfo=timezone.utc)
+    cell = CodeCell(None, Position(7, 0, 0), Position(7, 0, 8))
+    plugin.buffers = {
+        7: [SimpleNamespace(kernel_id="python", outputs={cell: SimpleNamespace(output=output)})]
+    }
+    info = plugin.function_cell_info([7])[0]
+    assert info["started_at"] == output.start_time.timestamp()
+    assert info["finished_at"] - info["started_at"] == pytest.approx(2.8)
 
 
 def test_run_captures_executed_source(monkeypatch):

@@ -1010,6 +1010,8 @@ class Molten:
                     "old": output.old,
                     "source": output.source,
                     "kernel_id": kernel.kernel_id,
+                    "started_at": output.start_time.timestamp() if output.start_time else None,
+                    "finished_at": output.end_time.timestamp() if output.end_time else None,
                 })
         return cells
 
