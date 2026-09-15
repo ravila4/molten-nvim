@@ -63,3 +63,24 @@ assert(
   placements[3].closed and placements[4].closed,
   "clear_all should close every active placement"
 )
+
+local buf = vim.api.nvim_create_buf(false, true)
+local ns = vim.api.nvim_create_namespace("snacks-scroll-test")
+local rows = { { { "wide image row", "Normal" } } }
+local eid = vim.api.nvim_buf_set_extmark(buf, ns, 0, 0, {
+  virt_lines = rows,
+  virt_lines_above = true,
+  right_gravity = false,
+})
+api.from_file("scroll.png", { id = "scroll", buffer = buf, x = 0, y = 1 })
+api.render("scroll")
+local placement = placements[#placements]
+placement.buf, placement.ns, placement.eids = buf, ns, { eid }
+placement.opts.on_update(placement)
+local mark = vim.api.nvim_buf_get_extmark_by_id(buf, ns, eid, { details = true })
+assert(mark[3].virt_lines_overflow == "scroll", "image rows should follow horizontal scrolling")
+assert(vim.deep_equal(mark[3].virt_lines, rows), "scrolling must retain image placeholders")
+assert(mark[3].virt_lines_above and not mark[3].right_gravity, "retain placement properties")
+placement.opts.on_update(placement)
+assert(#vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, {}) == 1, "updates must not duplicate rows")
+vim.api.nvim_buf_delete(buf, { force = true })
