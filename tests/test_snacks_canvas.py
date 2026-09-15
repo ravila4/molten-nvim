@@ -55,7 +55,7 @@ def test_snacks_provider_queues_image_until_present() -> None:
 
     assert identifier == "virt-plot"
     assert nvim.snacks_api.images[identifier] == {
-        "opts": {"id": "virt-plot", "buffer": 12, "x": 3, "y": 9},
+        "opts": {"id": "virt-plot", "buffer": 12, "x": 3, "y": 9, "row_offset": 4},
         "rendered": False,
         "closed": False,
     }
@@ -105,6 +105,8 @@ class FakeCanvas:
     def __init__(self) -> None:
         self.row_offset: int | None = None
         self.removed: list[str] = []
+        self.events: list[tuple[str, object]] = []
+        self.output = "output"
 
     def add_image(
         self,
@@ -125,6 +127,21 @@ class FakeCanvas:
     def remove_image(self, identifier: str) -> None:
         self.removed.append(identifier)
 
+    def begin_output(self, _bufnr: int, _row: int, _namespace: int, _mark_id: int) -> str:
+        return self.output
+
+    def render_image(self, identifier: str, _output: str) -> None:
+        self.events.append(("image", identifier))
+
+    def render_text(self, _output: str, lines: list[str], _highlight: str) -> None:
+        self.events.append(("text", lines))
+
+    def finish_output(self, _output: str) -> None:
+        return None
+
+    def clear_output(self, _output: str) -> None:
+        return None
+
 
 def test_snacks_virtual_image_uses_provider_virtual_lines() -> None:
     canvas = FakeCanvas()
@@ -135,7 +152,7 @@ def test_snacks_virtual_image_uses_provider_virtual_lines() -> None:
 
     assert text == " \n"
     assert virtual_lines == 3
-    assert canvas.row_offset is None
+    assert canvas.row_offset == 5
 
 
 def test_snacks_output_keeps_anchor_line_for_placement() -> None:
@@ -167,10 +184,50 @@ def test_snacks_image_height_does_not_hide_text_from_truncation() -> None:
     image.img_identifier = "virt-plot"
     image.height = 20
 
+    images = [(image, 1)]
     lines = output_buffer.truncate_virt_lines(
         ["header", " ", "first line after image", "second line after image"],
-        [(image, 1)],
+        images,
     )
 
     assert lines == ["header", "󰁅 2 More Lines "]
     assert output_buffer.canvas.removed == ["virt-plot"]
+    assert images == []
+
+
+def test_snacks_mixed_output_creates_text_and_image_blocks_in_chunk_order() -> None:
+    canvas = FakeCanvas()
+
+    class FakeApi:
+        def __init__(self) -> None:
+            self.next_id = 10
+
+        def set_extmark(self, _namespace, _row, _col, opts):
+            self.next_id += 1
+            return self.next_id
+
+    output_buffer = OutputBuffer.__new__(OutputBuffer)
+    output_buffer.canvas = canvas
+    output_buffer.extmark_namespace = 3
+    output_buffer.options = SimpleNamespace(hl=SimpleNamespace(virtual_text="MoltenOutput"))
+    output_buffer.virt_text_id = None
+    output_buffer.snacks_output_id = None
+    first = ImageOutputChunk("first.png")
+    first.img_identifier = "first"
+    second = ImageOutputChunk("second.png")
+    second.img_identifier = "second"
+
+    output_buffer.render_snacks_virtual_output(
+        SimpleNamespace(api=FakeApi(), number=4),
+        7,
+        ["header", "before", " ", "between", " ", "after"],
+        [(first, 2), (second, 4)],
+    )
+
+    assert canvas.events == [
+        ("text", ["before"]),
+        ("image", "first"),
+        ("text", ["between"]),
+        ("image", "second"),
+        ("text", ["after"]),
+    ]

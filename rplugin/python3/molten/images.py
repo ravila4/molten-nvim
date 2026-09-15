@@ -95,6 +95,21 @@ class Canvas(ABC):
           The identifier for the image to remove.
         """
 
+    def begin_output(self, _bufnr: int, _row: int, _namespace: int, _mark_id: int) -> str:
+        raise NotImplementedError
+
+    def render_image(self, _identifier: str, _output: str) -> None:
+        raise NotImplementedError
+
+    def render_text(self, _output: str, _lines: list[str], _highlight: str) -> None:
+        raise NotImplementedError
+
+    def finish_output(self, _output: str) -> None:
+        raise NotImplementedError
+
+    def clear_output(self, _output: str) -> None:
+        raise NotImplementedError
+
 
 class NoCanvas(Canvas):
     def __init__(self) -> None:
@@ -243,7 +258,7 @@ class SnacksCanvas(Canvas):
         winnr: int | None = None,
         row_offset: int | None = None,
     ) -> str:
-        del winnr, row_offset
+        del winnr
         image = self.snacks_api.from_file(
             path,
             {
@@ -251,10 +266,31 @@ class SnacksCanvas(Canvas):
                 "buffer": bufnr,
                 "x": x,
                 "y": y + 1,
+                "row_offset": row_offset,
             },
         )
         self.to_make_visible.add(image)
         return image
+
+    def begin_output(self, bufnr: int, row: int, namespace: int, mark_id: int) -> str:
+        return self.snacks_api.begin_output(bufnr, row, namespace, mark_id)
+
+    def render_image(self, identifier: str, output: str) -> None:
+        if identifier not in self.to_make_visible:
+            return
+        if identifier not in self.to_make_invisible:
+            self.snacks_api.render(identifier, output)
+        self.to_make_visible.discard(identifier)
+        self.to_make_invisible.discard(identifier)
+
+    def render_text(self, output: str, lines: list[str], highlight: str) -> None:
+        self.snacks_api.render_text(output, lines, highlight)
+
+    def finish_output(self, output: str) -> None:
+        self.snacks_api.finish_output(output)
+
+    def clear_output(self, output: str) -> None:
+        self.snacks_api.clear_output(output)
 
     def remove_image(self, identifier: str) -> None:
         self.to_make_invisible.add(identifier)

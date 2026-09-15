@@ -22,6 +22,7 @@ class OutputBuffer:
     display_virt_lines: Optional[DynamicPosition]
     extmark_namespace: int
     virt_text_id: Optional[int]
+    snacks_output_id: Optional[str]
     displayed_status: OutputStatus
 
     options: MoltenOptions
@@ -38,6 +39,7 @@ class OutputBuffer:
         self.display_virt_lines = None
         self.extmark_namespace = extmark_namespace
         self.virt_text_id = None
+        self.snacks_output_id = None
         self.displayed_status = OutputStatus.HOLD
 
         self.options = options
@@ -140,8 +142,7 @@ class OutputBuffer:
             self.display_virt_lines = None
 
     def clear_virt_output(self, bufnr: int) -> None:
-        if self.virt_text_id is not None:
-            self.nvim.funcs.nvim_buf_del_extmark(bufnr, self.extmark_namespace, self.virt_text_id)
+        self.clear_virtual_extmarks(bufnr)
         # clear the image too
         redraw = False
         for chunk in self.output.chunks:
@@ -150,6 +151,14 @@ class OutputBuffer:
                 redraw = True
         if redraw:
             self.canvas.present()
+
+    def clear_virtual_extmarks(self, bufnr: int) -> None:
+        if self.virt_text_id is not None:
+            self.nvim.funcs.nvim_buf_del_extmark(bufnr, self.extmark_namespace, self.virt_text_id)
+        if self.snacks_output_id is not None:
+            self.canvas.clear_output(self.snacks_output_id)
+        self.virt_text_id = None
+        self.snacks_output_id = None
 
     def set_win_option(self, option: str, value) -> None:
         if self.display_win:
@@ -238,12 +247,7 @@ class OutputBuffer:
 
         buf = self.nvim.buffers[anchor.bufno]
 
-        # clear the existing virtual text
-        if self.virt_text_id is not None:
-            self.nvim.funcs.nvim_buf_del_extmark(
-                anchor.bufno, self.extmark_namespace, self.virt_text_id
-            )
-            self.virt_text_id = None
+        self.clear_virtual_extmarks(anchor.bufno)
 
         win_info = self.nvim.funcs.getwininfo(win.handle)[0]
         win_col = win_info["wincol"]
@@ -267,15 +271,57 @@ class OutputBuffer:
         lines, _, images = self.build_output_text(shape, anchor.bufno, True)
         lines = self.truncate_virt_lines(lines, images)
 
+        if self.options.image_provider == "snacks.nvim" and images:
+            self.render_snacks_virtual_output(buf, win_row, lines, images)
+        else:
+            self.virt_text_id = buf.api.set_extmark(
+                self.extmark_namespace,
+                win_row,
+                0,
+                {
+                    "virt_lines": [[(line, self.options.hl.virtual_text)] for line in lines],
+                },
+            )
+        self.canvas.present()
+
+    def render_snacks_virtual_output(
+        self,
+        buf: Buffer,
+        win_row: int,
+        lines: List[str],
+        images: List[Tuple[ImageOutputChunk, int]],
+    ) -> None:
         self.virt_text_id = buf.api.set_extmark(
             self.extmark_namespace,
             win_row,
             0,
             {
-                "virt_lines": [[(line, self.options.hl.virtual_text)] for line in lines],
+                "virt_lines": [
+                    [(lines[0], self.options.hl.virtual_text)],
+                ],
             },
         )
-        self.canvas.present()
+        self.snacks_output_id = self.canvas.begin_output(
+            buf.number, win_row, self.extmark_namespace, self.virt_text_id
+        )
+
+        def render_text(block: List[str]) -> None:
+            if not block:
+                return
+            self.canvas.render_text(
+                self.snacks_output_id,
+                block,
+                self.options.hl.virtual_text,
+            )
+
+        start = 1
+        for chunk, first_line in images:
+            render_text(lines[start:first_line])
+            if chunk.img_identifier is not None:
+                self.canvas.render_image(chunk.img_identifier, self.snacks_output_id)
+            start = first_line + 1
+        render_text(lines[start:])
+        self.canvas.finish_output(self.snacks_output_id)
 
     def truncate_virt_lines(
         self, lines: List[str], images: List[Tuple[ImageOutputChunk, int]]
@@ -302,9 +348,13 @@ class OutputBuffer:
             if kept == max_lines - 1:
                 cut = i + 1
                 break
+        kept_images = []
         for chunk, first in images:
             if first >= cut and chunk.img_identifier is not None:
                 self.canvas.remove_image(chunk.img_identifier)
+            else:
+                kept_images.append((chunk, first))
+        images[:] = kept_images
         lines = lines[:cut]
         lines.append(f"󰁅 {text_rows - max_lines + 1} More Lines ")
         return lines
