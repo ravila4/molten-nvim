@@ -69,6 +69,11 @@ snacks_api.from_file = function(path, opts)
       pos = { opts.y, opts.x },
       max_width = doc.max_width or 80,
       max_height = doc.max_height or 40,
+      on_update_pre = function(placement)
+        if placement.hidden and #placement:wins() > 0 then
+          placement:show()
+        end
+      end,
       on_update = function(placement)
         local image = images[opts.id]
         if image.output then

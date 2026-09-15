@@ -55,7 +55,7 @@ def test_snacks_provider_queues_image_until_present() -> None:
 
     assert identifier == "virt-plot"
     assert nvim.snacks_api.images[identifier] == {
-        "opts": {"id": "virt-plot", "buffer": 12, "x": 3, "y": 9, "row_offset": 4},
+        "opts": {"id": "virt-plot", "buffer": 12, "x": 3, "y": 9},
         "rendered": False,
         "closed": False,
     }
@@ -152,7 +152,7 @@ def test_snacks_virtual_image_uses_provider_virtual_lines() -> None:
 
     assert text == " \n"
     assert virtual_lines == 3
-    assert canvas.row_offset == 5
+    assert canvas.row_offset is None
 
 
 def test_snacks_output_keeps_anchor_line_for_placement() -> None:
@@ -268,3 +268,28 @@ def make_mixed_output(text_lines: int) -> OutputBuffer:
     ]
     output_buffer._get_header_text = lambda _output: "header"
     return output_buffer
+
+
+def test_snacks_progress_text_before_image_is_preserved() -> None:
+    output_buffer = make_mixed_output(1)
+    output_buffer.output.chunks = [TextOutputChunk("progress\rbefore image\n")]
+    output_buffer.output.merge_text_chunks()
+    output_buffer.output.chunks.extend([
+        ImageOutputChunk("plot.png"),
+        TextOutputChunk("after image"),
+    ])
+    output_buffer.extmark_namespace = 3
+    output_buffer.options.hl = SimpleNamespace(virtual_text="MoltenOutput")
+    lines, _, images = output_buffer.build_output_text((0, 12, 80, 24), 4, True)
+    output_buffer.render_snacks_virtual_output(
+        SimpleNamespace(api=SimpleNamespace(set_extmark=lambda *_args: 1), number=4),
+        7,
+        lines,
+        images,
+    )
+
+    assert output_buffer.canvas.events == [
+        ("text", ["before image"]),
+        ("image", "virt-plot.png"),
+        ("text", ["after image", ""]),
+    ]

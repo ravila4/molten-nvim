@@ -258,7 +258,7 @@ class SnacksCanvas(Canvas):
         winnr: int | None = None,
         row_offset: int | None = None,
     ) -> str:
-        del winnr
+        del winnr, row_offset
         image = self.snacks_api.from_file(
             path,
             {
@@ -266,7 +266,6 @@ class SnacksCanvas(Canvas):
                 "buffer": bufnr,
                 "x": x,
                 "y": y + 1,
-                "row_offset": row_offset,
             },
         )
         self.to_make_visible.add(image)

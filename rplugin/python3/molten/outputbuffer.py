@@ -181,6 +181,17 @@ class OutputBuffer:
         if len(self.output.chunks) > 0:
             x = 0
             for chunk in self.output.chunks:
+                if (
+                    virtual
+                    and self.options.image_provider == "snacks.nvim"
+                    and isinstance(chunk, ImageOutputChunk)
+                    and lines_str
+                    and not lines_str.endswith("\n")
+                ):
+                    # Keep image padding separate from unterminated stream text.
+                    lines_str += "\n"
+                    lineno += 1
+                    x = 0
                 y = lineno
                 if virtual:
                     y = shape[1]

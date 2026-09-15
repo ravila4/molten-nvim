@@ -21,7 +21,7 @@ vim.fn.writefile({
 }, svg)
 
 local api = require("load_snacks_nvim").snacks_api
-api.from_file(svg, { id = "svg", buffer = 1, x = 0, y = 1, row_offset = 2 })
+api.from_file(svg, { id = "svg", buffer = 1, x = 0, y = 1 })
 assert(
   vim.wait(10000, function()
     local ok, size = pcall(api.image_size, "svg")
@@ -36,14 +36,14 @@ vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "anchor", "following" })
 local output_mark = vim.api.nvim_buf_set_extmark(buf, output_ns, 0, 0, {
   virt_lines = { { { "header", "Normal" } } },
 })
-api.from_file(svg, { id = "ordered", buffer = buf, x = 0, y = 1, row_offset = 2 })
+api.from_file(svg, { id = "ordered", buffer = buf, x = 0, y = 1 })
 local output = api.begin_output(buf, 0, output_ns, output_mark)
 api.render_text(output, { "before" }, "Normal")
 api.render("ordered", output)
 api.render_text(output, { "between" }, "Normal")
 local second_svg = vim.fn.tempname() .. ".svg"
 vim.fn.writefile(vim.fn.readfile(svg), second_svg)
-api.from_file(second_svg, { id = "second", buffer = buf, x = 0, y = 1, row_offset = 4 })
+api.from_file(second_svg, { id = "second", buffer = buf, x = 0, y = 1 })
 api.render("second", output)
 api.render_text(output, { "after" }, "Normal")
 api.finish_output(output)
@@ -80,6 +80,32 @@ assert(between and between > 3 and between < #rows - 1, "text should separate bo
 
 vim.cmd.redraw()
 local anchor_row = vim.fn.screenpos(0, 1, 1).row
+local other_buf = vim.api.nvim_create_buf(false, true)
+local placement = vim.tbl_values(Snacks.image.image.new(svg).placements)[1]
+for _ = 1, 2 do
+  vim.api.nvim_set_current_buf(other_buf)
+  assert(
+    vim.wait(1000, function()
+      return placement.hidden
+    end),
+    "Snacks should hide the placement when its buffer leaves the window"
+  )
+  vim.api.nvim_set_current_buf(buf)
+  assert(
+    vim.wait(1000, function()
+      local restored = vim.api.nvim_buf_get_extmark_by_id(
+        buf,
+        output_ns,
+        output_mark,
+        { details = true }
+      )[3].virt_lines
+      return not placement.hidden and vim.deep_equal(restored, rows)
+    end),
+    "returning to the buffer should restore the ordered image rows"
+  )
+end
+vim.api.nvim_buf_delete(other_buf, { force = true })
+vim.cmd.redraw()
 assert(
   api.image_at(buf, vim.api.nvim_get_current_win(), anchor_row + 3, 1) == svg,
   "the rendered image should be addressable at its screen position"
@@ -171,6 +197,11 @@ assert(
 )
 
 api.clear_output(output)
+vim.api.nvim_set_current_buf(vim.api.nvim_create_buf(false, true))
+vim.api.nvim_set_current_buf(buf)
+vim.wait(50, function()
+  return false
+end)
 assert(
   #vim.api.nvim_buf_get_extmark_by_id(buf, output_ns, output_mark, {}) == 0,
   "clearing output must remove its composed rows"

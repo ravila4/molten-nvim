@@ -176,7 +176,6 @@ class ImageOutputChunk(OutputChunk):
                     lineno,
                     bufnr,
                     winnr,
-                    row_offset,
                 )
                 self.height = canvas.img_size(self.img_identifier, winnr)["height"]
                 return " \n", self.height
