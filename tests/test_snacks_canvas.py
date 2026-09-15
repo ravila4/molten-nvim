@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from molten.images import get_canvas_given_provider
 from molten.outputbuffer import OutputBuffer
-from molten.outputchunks import ImageOutputChunk, Output
+from molten.outputchunks import ImageOutputChunk, Output, TextOutputChunk
 
 
 class FakeSnacksApi:
@@ -105,6 +105,8 @@ class FakeCanvas:
     def __init__(self) -> None:
         self.row_offset: int | None = None
         self.removed: list[str] = []
+        self.events: list[tuple[str, object]] = []
+        self.output = "output"
 
     def add_image(
         self,
@@ -124,6 +126,21 @@ class FakeCanvas:
 
     def remove_image(self, identifier: str) -> None:
         self.removed.append(identifier)
+
+    def begin_output(self, _bufnr: int, _row: int, _namespace: int, _mark_id: int) -> str:
+        return self.output
+
+    def render_image(self, identifier: str, _output: str) -> None:
+        self.events.append(("image", identifier))
+
+    def render_text(self, _output: str, lines: list[str], _highlight: str) -> None:
+        self.events.append(("text", lines))
+
+    def finish_output(self, _output: str) -> None:
+        return None
+
+    def clear_output(self, _output: str) -> None:
+        return None
 
 
 def test_snacks_virtual_image_uses_provider_virtual_lines() -> None:
@@ -167,10 +184,112 @@ def test_snacks_image_height_does_not_hide_text_from_truncation() -> None:
     image.img_identifier = "virt-plot"
     image.height = 20
 
+    images = [(image, 1)]
     lines = output_buffer.truncate_virt_lines(
         ["header", " ", "first line after image", "second line after image"],
-        [(image, 1)],
+        images,
     )
 
     assert lines == ["header", "󰁅 2 More Lines "]
     assert output_buffer.canvas.removed == ["virt-plot"]
+    assert images == []
+
+
+def test_snacks_mixed_output_creates_text_and_image_blocks_in_chunk_order() -> None:
+    canvas = FakeCanvas()
+
+    class FakeApi:
+        def __init__(self) -> None:
+            self.next_id = 10
+
+        def set_extmark(self, _namespace, _row, _col, opts):
+            self.next_id += 1
+            return self.next_id
+
+    output_buffer = OutputBuffer.__new__(OutputBuffer)
+    output_buffer.canvas = canvas
+    output_buffer.extmark_namespace = 3
+    output_buffer.options = SimpleNamespace(hl=SimpleNamespace(virtual_text="MoltenOutput"))
+    output_buffer.virt_text_id = None
+    output_buffer.snacks_output_id = None
+    first = ImageOutputChunk("first.png")
+    first.img_identifier = "first"
+    second = ImageOutputChunk("second.png")
+    second.img_identifier = "second"
+
+    output_buffer.render_snacks_virtual_output(
+        SimpleNamespace(api=FakeApi(), number=4),
+        7,
+        ["header", "before", " ", "between", " ", "after"],
+        [(first, 2), (second, 4)],
+    )
+
+    assert canvas.events == [
+        ("text", ["before"]),
+        ("image", "first"),
+        ("text", ["between"]),
+        ("image", "second"),
+        ("text", ["after"]),
+    ]
+
+
+def test_snacks_padding_does_not_trigger_truncation() -> None:
+    output_buffer = make_mixed_output(11)
+    lines, _, images = output_buffer.build_output_text((0, 12, 80, 24), 4, True)
+
+    assert output_buffer.truncate_virt_lines(lines, images) == lines
+    assert lines[-2] == "line 11"
+
+
+def test_snacks_footer_counts_only_hidden_text() -> None:
+    output_buffer = make_mixed_output(12)
+    lines, _, images = output_buffer.build_output_text((0, 12, 80, 24), 4, True)
+
+    truncated = output_buffer.truncate_virt_lines(lines, images)
+
+    assert truncated == ["header", " ", *[f"line {i}" for i in range(1, 11)], "󰁅 2 More Lines "]
+
+
+def make_mixed_output(text_lines: int) -> OutputBuffer:
+    output_buffer = OutputBuffer.__new__(OutputBuffer)
+    output_buffer.nvim = SimpleNamespace(current=SimpleNamespace(window=SimpleNamespace(handle=9)))
+    output_buffer.canvas = FakeCanvas()
+    output_buffer.options = SimpleNamespace(
+        image_location="virt",
+        image_provider="snacks.nvim",
+        limit_output_chars=0,
+        virt_text_max_lines=12,
+        wrap_output=False,
+    )
+    output_buffer.output = Output(None)
+    output_buffer.output.chunks = [
+        ImageOutputChunk("plot.png"),
+        TextOutputChunk("\n".join(f"line {i}" for i in range(1, text_lines + 1))),
+    ]
+    output_buffer._get_header_text = lambda _output: "header"
+    return output_buffer
+
+
+def test_snacks_progress_text_before_image_is_preserved() -> None:
+    output_buffer = make_mixed_output(1)
+    output_buffer.output.chunks = [TextOutputChunk("progress\rbefore image\n")]
+    output_buffer.output.merge_text_chunks()
+    output_buffer.output.chunks.extend([
+        ImageOutputChunk("plot.png"),
+        TextOutputChunk("after image"),
+    ])
+    output_buffer.extmark_namespace = 3
+    output_buffer.options.hl = SimpleNamespace(virtual_text="MoltenOutput")
+    lines, _, images = output_buffer.build_output_text((0, 12, 80, 24), 4, True)
+    output_buffer.render_snacks_virtual_output(
+        SimpleNamespace(api=SimpleNamespace(set_extmark=lambda *_args: 1), number=4),
+        7,
+        lines,
+        images,
+    )
+
+    assert output_buffer.canvas.events == [
+        ("text", ["before image"]),
+        ("image", "virt-plot.png"),
+        ("text", ["after image", ""]),
+    ]
