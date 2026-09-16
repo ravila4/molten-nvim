@@ -132,3 +132,40 @@ def test_toggle_output_format_flips_option_and_vim_variable() -> None:
     plugin.command_toggle_output_format()
     assert plugin.options.output_format == "plain"
     assert plugin.nvim.vars["molten_output_format"] == "plain"
+
+
+NARROW = (0, 0, 20, 10)  # window width 20
+
+
+def test_place_does_not_hard_wrap_markdown_representation() -> None:
+    row = "| " + "a" * 40 + " |\n"
+    chunk = TextOutputChunk("x" * 40 + "\n", markdown=row)
+
+    text, extra = chunk.place(
+        0, options(output_format="markdown", wrap_output=True), 0, 0, NARROW, Mock(), True
+    )
+
+    assert text == row
+    assert extra == 0
+
+
+def test_place_still_hard_wraps_plain_representation() -> None:
+    chunk = TextOutputChunk("x" * 40 + "\n", markdown="| " + "a" * 40 + " |\n")
+
+    text, _extra = chunk.place(
+        0, options(output_format="plain", wrap_output=True), 0, 0, NARROW, Mock(), True
+    )
+
+    assert text.split("\n")[:2] == ["x" * 20, "x" * 20]
+
+
+def test_place_counts_wrapped_lines_for_markdown_in_float() -> None:
+    row = "| " + "a" * 40 + " |\n"
+    chunk = TextOutputChunk("x\n", markdown=row)
+
+    text, extra = chunk.place(
+        0, options(output_format="markdown", wrap_output=True), 0, 0, NARROW, Mock(), False
+    )
+
+    assert text == row
+    assert extra == 2

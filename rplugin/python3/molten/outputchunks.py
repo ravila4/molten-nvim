@@ -68,9 +68,12 @@ class TextOutputChunk(OutputChunk):
         self.markdown = markdown
         self.output_type = "display_data"
 
+    def shows_markdown(self, options: MoltenOptions) -> bool:
+        return options.output_format == "markdown" and self.markdown is not None
+
     def display_text(self, options: MoltenOptions) -> str:
-        if options.output_format == "markdown" and self.markdown is not None:
-            return self.markdown
+        if self.shows_markdown(options):
+            return self.markdown  # type: ignore[return-value]
         return self.text
 
     def __repr__(self) -> str:
@@ -97,6 +100,10 @@ class TextOutputChunk(OutputChunk):
                 splits = []
                 # Assume this is a progress bar, or similar, we shouldn't try to wrap it
                 if text.find("\r") != -1:
+                    return text, 0
+                # Markdown tables lose their rows when split; the virtual lines scroll
+                # horizontally instead (virt_lines_overflow = "scroll").
+                if self.shows_markdown(options):
                     return text, 0
                 for line in text.split("\n"):
                     index = 0
