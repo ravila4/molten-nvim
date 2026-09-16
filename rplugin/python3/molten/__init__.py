@@ -396,6 +396,17 @@ class Molten:
                     return output.output.text(self.options)
         return ""
 
+    @pynvim.function("MoltenToggleVirtExpandAt", sync=True)  # type: ignore
+    def function_toggle_virt_expand_at(self, args: List[int]) -> bool:
+        """Expand or collapse the virtual-text output shown by the extmark
+        [bufnr, extmark_id]. Returns False when there is no such output."""
+        bufnr, extmark_id = args
+        for kernel in self.buffers.get(bufnr, []):
+            for span, output in kernel.outputs.items():
+                if output.virt_text_id == extmark_id:
+                    return kernel.toggle_virt_expand(span)
+        return False
+
     @pynvim.function("MoltenOutputImages", sync=True)  # type: ignore
     def function_output_images(self, args: list[int]) -> list[str]:
         """Image source paths for [bufnr, output extmark id], in output order."""
@@ -770,6 +781,17 @@ class Molten:
         self._clear_interface()
         self._update_interface()
         notify_info(self.nvim, f"Output format: {new_format}")
+
+    @pynvim.command("MoltenToggleVirtExpand", nargs=0, sync=True)  # type: ignore
+    @nvimui  # type: ignore
+    def command_toggle_virt_expand(self) -> None:
+        """Expand or collapse the virtual-text output of the cell under the cursor."""
+        molten_kernels = self._get_current_buf_kernels(True)
+        assert molten_kernels is not None
+        for kernel in molten_kernels:
+            if kernel.toggle_virt_expand():
+                return
+        notify_warn(self.nvim, "No output under the cursor")
 
     @pynvim.command("MoltenImportOutput", nargs="*", sync=True)  # type: ignore
     @nvimui  # type: ignore

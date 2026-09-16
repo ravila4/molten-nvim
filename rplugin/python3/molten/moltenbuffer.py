@@ -309,6 +309,19 @@ class MoltenKernel:
         for cell, output in self.outputs.items():
             output.clear_virt_output(cell.bufno)
 
+    def toggle_virt_expand(self, span: Optional[CodeCell] = None) -> bool:
+        """Expand or collapse the virtual-text output of `span` (default: the cell under
+        the cursor) past virt_text_max_lines. Returns False when there is no such cell."""
+        if span is None:
+            span = self._get_selected_span()
+        if span is None:
+            return False
+        output = self.outputs[span]
+        output.virt_expanded = not output.virt_expanded
+        output.clear_virt_output(span.bufno)
+        self.update_interface()
+        return True
+
     def _get_selected_span(self) -> Optional[CodeCell]:
         current_position = self._get_cursor_position()
         selected = None
@@ -365,9 +378,12 @@ class MoltenKernel:
 
     def update_interface(self) -> None:
         buffer_numbers = [buf.number for buf in self.buffers]
-        self._doautocmd("MoltenCellUpdate", {
-            "data": {"buffers": buffer_numbers, "kernel_id": self.kernel_id},
-        })
+        self._doautocmd(
+            "MoltenCellUpdate",
+            {
+                "data": {"buffers": buffer_numbers, "kernel_id": self.kernel_id},
+            },
+        )
         if self.nvim.current.buffer.number not in buffer_numbers:
             return
 

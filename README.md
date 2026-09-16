@@ -127,6 +127,7 @@ kernel is attached to the buffer. This is configurable with the `molten_auto_ini
 | `MoltenShowOutput`        | none                  | Shows the output window for the active cell |
 | `MoltenHideOutput`        | none                  | Hide currently open output window |
 | `MoltenToggleOutputFormat` | none                  | Switch text outputs between `plain` and `markdown` (see `g:molten_output_format`). Repaints existing outputs without re-running cells |
+| `MoltenToggleVirtExpand`  | none                  | Expand or collapse the virtual-text output of the cell under the cursor past `g:molten_virt_text_max_lines`. The Lua function `MoltenToggleVirtExpandAt(bufnr, extmark_id)` does the same for a given output, and `require("molten.virt_lines").at(buf, win, screenrow)` resolves a mouse position to one, so a click on the `More Lines` footer can expand it |
 | `MoltenEnterOutput`       | none                  | Move into the active cell's output window. Opens but does not enter the output if it's not open. **must be called with `noautocmd`** (see [Keybindings](#keybindings) for example) |
 | `MoltenInterrupt`         | `[kernel]`            | Sends a keyboard interrupt to the kernel which stops any currently running code. (does nothing if there's no current output) |
 | `MoltenOpenInBrowser`     | none                  | Open the current output in the browser. **Currently this only supports cells with `'text/html'` outputs**, configured with `molten_auto_open_html_in_browser` and `molten_open_cmd` |

@@ -10,6 +10,10 @@ from molten.options import MoltenOptions
 from molten.position import DynamicPosition, Position
 from molten.utils import notify_error
 
+# Footers appended by truncate_virt_lines. lua/molten/virt_lines.lua matches the
+# words "More Lines" and "Show Less" to make them clickable.
+COLLAPSE_FOOTER = "\U000f005d Show Less "
+
 
 class OutputBuffer:
     nvim: Nvim
@@ -27,6 +31,8 @@ class OutputBuffer:
 
     options: MoltenOptions
     lua: Any
+    # Show every virtual line regardless of virt_text_max_lines. Toggled per cell.
+    virt_expanded: bool = False
 
     def __init__(self, nvim: Nvim, canvas: Canvas, extmark_namespace: int, options: MoltenOptions):
         self.nvim = nvim
@@ -178,7 +184,7 @@ class OutputBuffer:
     ) -> Tuple[List[str], int, List[Tuple[ImageOutputChunk, int]]]:
         """Returns the output lines, the number of rows they take up, and the
         images in the output with the index of the first line each one covers."""
-        lineno = 1 # we add a status line at the top in the end
+        lineno = 1  # we add a status line at the top in the end
         lines_str = ""
         # in floating windows images are rendered with virtual lines by image.nvim
         virtual_lines = 0
@@ -356,6 +362,9 @@ class OutputBuffer:
             image_rows.add(len(lines) - 1)
         text_rows = len(lines) - len(image_rows)
         if text_rows <= max_lines:
+            return lines
+        if self.virt_expanded:
+            lines.append(COLLAPSE_FOOTER)
             return lines
 
         kept = 0
