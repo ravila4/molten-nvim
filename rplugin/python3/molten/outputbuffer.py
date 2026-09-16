@@ -104,7 +104,12 @@ class OutputBuffer:
         if output.status == OutputStatus.NEW:
             return f"Out[_]: Never Run"
         else:
-            return f"{old}Out[{execution_count}]: {status} {time}".rstrip()
+            parts = [f"{old}Out[{execution_count}]:"]
+            if self.options.output_show_status:
+                parts.append(status)
+            if time:
+                parts.append(time)
+            return " ".join(parts)
 
     def enter(self, anchor: Position) -> bool:
         entered = False
