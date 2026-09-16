@@ -393,7 +393,7 @@ class Molten:
         for kernel in self.buffers.get(bufnr, []):
             for output in kernel.outputs.values():
                 if output.virt_text_id == extmark_id:
-                    return output.output.text()
+                    return output.output.text(self.options)
         return ""
 
     @pynvim.function("MoltenOutputImages", sync=True)  # type: ignore
@@ -756,6 +756,20 @@ class Molten:
             molten.should_show_floating_win = False
 
         self._update_interface()
+
+    @pynvim.command("MoltenToggleOutputFormat", nargs=0, sync=True)  # type: ignore
+    @nvimui  # type: ignore
+    def command_toggle_output_format(self) -> None:
+        """Switch text outputs between the plain and markdown representations and
+        repaint every buffer's outputs from their stored data."""
+        self._initialize_if_necessary()
+        new_format = "markdown" if self.options.output_format != "markdown" else "plain"
+        self.options.output_format = new_format
+        self.nvim.vars["molten_output_format"] = new_format
+        # Finished virtual outputs are cached by extmark id; drop them so they repaint.
+        self._clear_interface()
+        self._update_interface()
+        notify_info(self.nvim, f"Output format: {new_format}")
 
     @pynvim.command("MoltenImportOutput", nargs="*", sync=True)  # type: ignore
     @nvimui  # type: ignore

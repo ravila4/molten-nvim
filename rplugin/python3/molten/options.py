@@ -44,6 +44,7 @@ class MoltenOptions:
     limit_output_chars: int
     open_cmd: Optional[str]
     output_crop_border: bool
+    output_format: str
     output_show_exec_time: bool
     output_show_status: bool
     output_show_more: bool
@@ -84,6 +85,7 @@ class MoltenOptions:
             ("molten_image_provider", "none"),
             ("molten_open_cmd", None),
             ("molten_output_crop_border", True),
+            ("molten_output_format", "plain"), # "plain" or "markdown"
             ("molten_output_show_exec_time", True),
             ("molten_output_show_status", True),
             ("molten_output_show_more", False),

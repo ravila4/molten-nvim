@@ -16,6 +16,7 @@ from datetime import datetime
 from pynvim import Nvim
 
 
+from molten.html_table import html_tables_to_markdown
 from molten.images import Canvas
 from molten.options import MoltenOptions
 from molten.utils import notify_error
@@ -58,10 +59,19 @@ def clean_up_text(text: str) -> str:
 
 class TextOutputChunk(OutputChunk):
     text: str
+    # Alternative rendering built from text/markdown or a text/html table, if the
+    # output had one. Shown instead of `text` when the output format is "markdown".
+    markdown: Optional[str]
 
-    def __init__(self, text: str):
+    def __init__(self, text: str, markdown: Optional[str] = None):
         self.text = text
+        self.markdown = markdown
         self.output_type = "display_data"
+
+    def display_text(self, options: MoltenOptions) -> str:
+        if options.output_format == "markdown" and self.markdown is not None:
+            return self.markdown
+        return self.text
 
     def __repr__(self) -> str:
         return f'TextOutputChunk("{self.text}")'
@@ -78,7 +88,7 @@ class TextOutputChunk(OutputChunk):
         winnr: int | None = None,
         row_offset: int = 0,
     ) -> Tuple[str, int]:
-        text = clean_up_text(self.text)
+        text = clean_up_text(self.display_text(options))
         extra_lines = 0
         if options.wrap_output:  # count the number of extra lines this will need when wrapped
             win_width = shape[2]
@@ -110,8 +120,8 @@ class TextOutputChunk(OutputChunk):
 
 
 class TextLnOutputChunk(TextOutputChunk):
-    def __init__(self, text: str):
-        super().__init__(text + "\n")
+    def __init__(self, text: str, markdown: Optional[str] = None):
+        super().__init__(text + "\n", None if markdown is None else markdown + "\n")
 
 
 class BadOutputChunk(TextLnOutputChunk):
@@ -232,10 +242,13 @@ class Output:
 
         self._should_clear = False
 
-    def text(self) -> str:
-        """The text chunks of this output, without terminal escape codes."""
+    def text(self, options: MoltenOptions) -> str:
+        """The text chunks of this output in the active output format, without terminal
+        escape codes."""
         return "".join(
-            clean_up_text(chunk.text) for chunk in self.chunks if isinstance(chunk, TextOutputChunk)
+            clean_up_text(chunk.display_text(options))
+            for chunk in self.chunks
+            if isinstance(chunk, TextOutputChunk)
         )
 
     def merge_text_chunks(self):
@@ -248,6 +261,7 @@ class Output:
         ):
             c1.text += c2.text
             c1.text = "\n".join([re.sub(r".*\r", "", x) for x in c1.text.split("\n")[:-1]])
+            c1.markdown = None
             c1.jupyter_data = {"text/plain": c1.text}
             self.chunks.pop()
         elif len(self.chunks) > 0 and isinstance((c1 := self.chunks[0]), TextOutputChunk):
@@ -313,8 +327,23 @@ def to_outputchunk(
             notify_error(nvim, f"pnglatex was unable to render image from LaTeX: {tex}")
             return _from_plaintext(tex)
 
+    def _mime_text(mimetype: str) -> Optional[str]:
+        value = data.get(mimetype) if data is not None else None
+        if isinstance(value, list):
+            value = "".join(value)
+        return value if isinstance(value, str) and value else None
+
+    def _markdown_alternative() -> Optional[str]:
+        markdown = _mime_text("text/markdown")
+        if markdown is not None:
+            return markdown.rstrip("\n")
+        html = _mime_text("text/html")
+        if html is not None:
+            return html_tables_to_markdown(html)
+        return None
+
     def _from_plaintext(text: str) -> OutputChunk:
-        return TextLnOutputChunk(text)
+        return TextLnOutputChunk(text, _markdown_alternative())
 
     chunk = None
     # if options.image_provider != "none":
@@ -346,8 +375,8 @@ def to_outputchunk(
 
     if chunk is None:
         # fallback to plain text if there's nothing else
-        if data is not None and data.get("text/plain"):
-            chunk = _from_plaintext(data["text/plain"])
+        if (plain := _mime_text("text/plain")) is not None:
+            chunk = _from_plaintext(plain)
         else:
             if data == None:
                 data = {}

@@ -258,6 +258,7 @@ def make_mixed_output(text_lines: int) -> OutputBuffer:
         image_location="virt",
         image_provider="snacks.nvim",
         limit_output_chars=0,
+        output_format="plain",
         virt_text_max_lines=12,
         wrap_output=False,
     )

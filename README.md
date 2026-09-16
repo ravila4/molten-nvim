@@ -126,6 +126,7 @@ kernel is attached to the buffer. This is configurable with the `molten_auto_ini
 | `MoltenDelete`            | none                  | Delete the active cell (does nothing if there is no active cell) |
 | `MoltenShowOutput`        | none                  | Shows the output window for the active cell |
 | `MoltenHideOutput`        | none                  | Hide currently open output window |
+| `MoltenToggleOutputFormat` | none                  | Switch text outputs between `plain` and `markdown` (see `g:molten_output_format`). Repaints existing outputs without re-running cells |
 | `MoltenEnterOutput`       | none                  | Move into the active cell's output window. Opens but does not enter the output if it's not open. **must be called with `noautocmd`** (see [Keybindings](#keybindings) for example) |
 | `MoltenInterrupt`         | `[kernel]`            | Sends a keyboard interrupt to the kernel which stops any currently running code. (does nothing if there's no current output) |
 | `MoltenOpenInBrowser`     | none                  | Open the current output in the browser. **Currently this only supports cells with `'text/html'` outputs**, configured with `molten_auto_open_html_in_browser` and `molten_open_cmd` |
@@ -190,6 +191,7 @@ variable, their values, and a brief description.
 | `g:molten_image_provider`                     | (`"none"`) \| `"image.nvim"` \| `"wezterm"` \|              | How images are displayed see [Images](#images) for more details |
 | `g:molten_open_cmd`                           | (`nil`) \| Any command                                      | Defaults to `xdg-open` on Linux, `open` on Darwin, and `start` on Windows. But you can override it to whatever you want. The command is called like: `subprocess.run([open_cmd, filepath])` |
 | `g:molten_output_crop_border`                 | (`true`) \| `false`                                         | 'crops' the bottom border of the output window when it would otherwise just sit at the bottom of the screen |
+| `g:molten_output_format`                      | (`"plain"`) \| `"markdown"`                                 | `markdown` shows `text/markdown` outputs as their source and renders `text/html` tables (e.g. pandas DataFrames) as pipe tables; anything else falls back to `text/plain` |
 | `g:molten_output_show_exec_time`              | (`true`) \| `false`                                         | Shows the current amount of time since the cell has begun execution |
 | `g:molten_output_show_more`                   | `true` \| (`false`)                                         | When the window can't display the entire contents of the output buffer, shows the number of extra lines in the window footer (requires nvim 10.0+ and a window border) |
 | `g:molten_output_virt_lines`                  | `true` \| (`false`)                                         | Pad the main buffer with virtual lines so the floating window doesn't cover anything while it's open |
