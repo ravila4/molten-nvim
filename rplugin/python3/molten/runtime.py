@@ -93,6 +93,7 @@ class JupyterRuntime:
         self._kernel_info = None
         self._iopub_connected = False
         self._next_info_request = 0
+        self._own_msg_ids: set = set()
 
     def is_ready(self) -> bool:
         return self.state in (RuntimeState.IDLE, RuntimeState.RUNNING)
@@ -176,7 +177,9 @@ class JupyterRuntime:
         self._begin_startup()
 
     def run_code(self, code: str) -> None:
-        self.kernel_client.execute(code)
+        msg_id = self.kernel_client.execute(code)
+        if isinstance(msg_id, str):
+            self._own_msg_ids.add(msg_id)
 
     @contextmanager
     def _alloc_file(
@@ -197,7 +200,9 @@ class JupyterRuntime:
             if isinstance(chunk, TextOutputChunk) and chunk.text.startswith("\r"):
                 output.merge_text_chunks()
 
-    def _tick_one(self, output: Output, message_type: str, content: Dict[str, Any]) -> bool:
+    def _tick_one(
+        self, output: Output, message_type: str, content: Dict[str, Any], own: bool = True
+    ) -> bool:
         def copy_on_demand(content_ctor):
             if self.options.copy_output:
                 import pyperclip
@@ -213,7 +218,9 @@ class JupyterRuntime:
 
         if message_type == "execute_input":
             output.execution_count = content["execution_count"]
-            if self.external_kernel is False:
+            # An external kernel may be shared with other clients; only
+            # executions this runtime sent drive the cell status.
+            if own:
                 if output.status == OutputStatus.DONE:
                     return False
                 if output.status == OutputStatus.HOLD:
@@ -303,7 +310,11 @@ class JupyterRuntime:
                 if "content" not in message or "msg_type" not in message:
                     continue
 
-                did_stuff_now = self._tick_one(output, message["msg_type"], message["content"])
+                own = (
+                    not self.external_kernel
+                    or message.get("parent_header", {}).get("msg_id") in self._own_msg_ids
+                )
+                did_stuff_now = self._tick_one(output, message["msg_type"], message["content"], own)
                 did_stuff = did_stuff or did_stuff_now
 
                 if output.status == OutputStatus.DONE:
